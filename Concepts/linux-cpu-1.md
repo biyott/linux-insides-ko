@@ -92,11 +92,9 @@ early_param("percpu_alloc", percpu_alloc_setup);
 enum pcpu_fc pcpu_chosen_fc __initdata = PCPU_FC_AUTO;
 ```
 
-만약 `percpu_alloc` 파라미터가 커널 명령줄에 주어지지 않는다면, `embed` 할당자가 [memblock](https://0xax.gitbooks.io/linux-insides/content/MM/linux-mm-1.html)와 함께 bootmem에 첫번째 percpu 청크를 끼워넣는 데에 사용될 것입니다.
+만약 `percpu_alloc` 파라미터가 커널 명령줄에 주어지지 않는다면, `embed` 할당자가 [memblock](https://0xax.gitbooks.io/linux-insides/content/MM/linux-mm-1.html)와 함께 bootmem에 첫번째 percpu 청크를 끼워넣는 데에 사용될 것입니다. 마지막 할당자는, 첫번째 청크를 `PAGE_SIZE` 페이지에 매핑하는 첫번째 청크 `page` 할당자입니다.
 
-If the `percpu_alloc` parameter is not given to the kernel command line, the `embed` allocator will be used which embeds the first percpu chunk into bootmem with the [memblock](https://0xax.gitbooks.io/linux-insides/content/MM/linux-mm-1.html). The last allocator is the first chunk `page` allocator which maps the first chunk with `PAGE_SIZE` pages.
-
-As I wrote above, first of all we make a check of the first chunk allocator type in the `setup_per_cpu_areas`. We check that first chunk allocator is not page:
+제가 위에 쓴데로, 우선 우리는 `setup_per_cpu_areas` 안에 있는 첫번째 청크 할당자 타입을 확인합니다. 첫번째 청크 할당자가 페이지가 아닌지 확인합니다:
 
 ```C
 if (pcpu_chosen_fc != PCPU_FC_PAGE) {
@@ -106,7 +104,7 @@ if (pcpu_chosen_fc != PCPU_FC_PAGE) {
 }
 ```
 
-If it is not `PCPU_FC_PAGE`, we will use the `embed` allocator and allocate space for the first chunk with the `pcpu_embed_first_chunk` function:
+만약 `PCPU_FC_PAGE`가 아니라면, 우리는 `embed` 할당자를 사용하고 `pcpu_embed_first_chunk` 함수와 함께 첫번째 청크를 위한 공간을 할당할 것입니다.
 
 ```C
 rc = pcpu_embed_first_chunk(PERCPU_FIRST_CHUNK_RESERVE,
@@ -115,16 +113,16 @@ rc = pcpu_embed_first_chunk(PERCPU_FIRST_CHUNK_RESERVE,
 					    pcpu_fc_alloc, pcpu_fc_free);
 ```
 
-As shown above, the `pcpu_embed_first_chunk` function embeds the first percpu chunk into bootmem then we pass a couple of parameters to the `pcup_embed_first_chunk`. They are as follows:
+위에서 보았듯, `pcpu_embed_first_chunk` 함수는 첫번째 CPU별 청크를 bootmem에 내장시키고 `pcup_embed_first_chunk`에 몇개의 파라미터를 전달합니다. 파라미터는 다음과 같습니다:
 
-* `PERCPU_FIRST_CHUNK_RESERVE` - the size of the reserved space for the static `percpu` variables;
-* `dyn_size` - minimum free size for dynamic allocation in bytes;
-* `atom_size` - all allocations are whole multiples of this and aligned to this parameter;
-* `pcpu_cpu_distance` - callback to determine distance between cpus;
-* `pcpu_fc_alloc` - function to allocate `percpu` page;
-* `pcpu_fc_free` - function to release `percpu` page.
+* `PERCPU_FIRST_CHUNK_RESERVE` - static `percpu` 변수를 위한 예약공간의 크기(사이즈);
+* `dyn_size` - 동적 할당을 위한 최소의 여유 사이즈(바이트);
+* `atom_size` - 모든 할당은 이것의 배수이며, 이 파라미터와 결합된다;
+* `pcpu_cpu_distance` - cpu 사이에서 거리를 결정하는 콜백;
+* `pcpu_fc_alloc` - `percpu` 페이지를 할당하는 함수;
+* `pcpu_fc_free` - `percpu` 페이지를 해제하는 함수.
 
-We calculate all of these parameters before the call of the `pcpu_embed_first_chunk`:
+우리는 모든 파라미터를 `pcpu_embed_first_chunk` 호출 전에 계산합니다:
 
 ```C
 const size_t dyn_size = PERCPU_MODULE_RESERVE + PERCPU_DYNAMIC_RESERVE - PERCPU_FIRST_CHUNK_RESERVE;
@@ -136,15 +134,17 @@ size_t atom_size;
 #endif
 ```
 
-If the first chunk allocator is `PCPU_FC_PAGE`, we will use the `pcpu_page_first_chunk` instead of the `pcpu_embed_first_chunk`. After that `percpu` areas up, we setup `percpu` offset and its segment for every CPU with the `setup_percpu_segment` function (only for `x86` systems) and move some early data from the arrays to the `percpu` variables (`x86_cpu_to_apicid`, `irq_stack_ptr` and etc...). After the kernel finishes the initialization process, we will have loaded N `.data..percpu` sections, where N is the number of CPUs, and the section used by the bootstrap processor will contain an uninitialized variable created with the `DEFINE_PER_CPU` macro.
+만약 첫번째 청크 할당자가 `PCPU_FC_PAGE`라면, 우리는 `pcpu_embed_first_chunk` 대신에 `pcpu_page_first_chunk`를 사용할 것입니다. 그 `percpu` 영역이 할당된 이후, 우리는 `percpu` 오프셋과 그 세그먼트를 설정합니다.
+이것은 `setup_percpu_segment` 함수를 가진 모든 CPU에 대한 것 입니다. 그리고 모든 데이터를 배열에서 `percpu` 변수(`x86_cpu_to_apicid`, `irq_stack_ptr` 등)로 옮깁니다.
+커널이 초기화 과정을 끝낸 후, 우리는 N `.data..percpu` 섹션을 로드했을 것이며, N은 CPU의 수이고 부트스트랩 프로세서가 사용하는 섹션은 `DEFINE_PER_CPU` 매크로와 함께 생성된 초기화되지 않은 변수를 포함할 것입니다.
 
-The kernel provides an API for per-cpu variables manipulating:
+커널은 cpu별 변수를 조작할 수 있는 API를 제공합니다:
 
 * get_cpu_var(var)
 * put_cpu_var(var)
 
 
-Let's look at the `get_cpu_var` implementation:
+`get_cpu_var` 구현을 살펴봅시다:
 
 ```C
 #define get_cpu_var(var)     \
