@@ -51,25 +51,25 @@ __attribute__((section(".data..percpu"))) int per_cpu_n
               CONTENTS, ALLOC, LOAD, DATA
 ```
 
-Ok, now we know that when we use the `DEFINE_PER_CPU` macro, a per-cpu variable in the `.data..percpu` section will be created. When the kernel initializes it calls the `setup_per_cpu_areas` function which loads the `.data..percpu` section multiple times, one section per CPU.
+OK, 이제 우리는 `DEFINE_PER_CPU` 매크로를 사용할 때, `.data..percpu` 섹션에 있는 CPU별 변수가 생성될 것을 알고 있습니다. 커널이 초기화할 때, `.data..percpu` 섹션을 여러번 로드하는 `setup_per_cpu_areas` 함수를 호출합니다. 이 함수는 CPU당 하나의 섹션입니다.
 
-Let's look at the per-CPU areas initialization process. It starts in the [init/main.c](https://github.com/torvalds/linux/blob/16f73eb02d7e1765ccab3d2018e0bd98eb93d973/init/main.c) from the call of the `setup_per_cpu_areas` function which is defined in the [arch/x86/kernel/setup_percpu.c](https://github.com/torvalds/linux/blob/16f73eb02d7e1765ccab3d2018e0bd98eb93d973/arch/x86/kernel/setup_percpu.c).
+CPU별 영역 초기화 과정을 살펴보겠습니다. 그것은 [init/main.c](https://github.com/torvalds/linux/blob/16f73eb02d7e1765ccab3d2018e0bd98eb93d973/init/main.c)소스에서, [arch/x86/kernel/setup_percpu.c](https://github.com/torvalds/linux/blob/16f73eb02d7e1765ccab3d2018e0bd98eb93d973/arch/x86/kernel/setup_percpu.c)에 정의된 `setup_per_cpu_areas` 함수 호출로 시작됩니다.
 
 ```C
 pr_info("NR_CPUS:%d nr_cpumask_bits:%d nr_cpu_ids:%d nr_node_ids:%d\n",
         NR_CPUS, nr_cpumask_bits, nr_cpu_ids, nr_node_ids);
 ```
 
-The `setup_per_cpu_areas` starts from the output information about the maximum number of CPUs set during kernel configuration with the `CONFIG_NR_CPUS` configuration option, actual number of CPUs, `nr_cpumask_bits` is the same that `NR_CPUS` bit for the new `cpumask` operators and number of `NUMA` nodes.
+`setup_per_cpu_areas`는 커널 구성 중에 설정한 최대 CPU 수에 대한 출력 정보에서 시작됩니다. 설정 항목은 `CONFIG_NR_CPUS` 구성 옵션, 실제 CPU 수, `nr_cpumask_bits`(`NR_CPUS` 비트와 동일. `NR_CPUS` 비트는 새로운 `cpumask` 연산자와 `NUMA` 노드 수를 위한 것) 등입니다.
 
-We can see this output in the dmesg:
+우리는 dmesg 안에서 이러한 출력을 볼 수 있습니다:
 
 ```
 $ dmesg | grep percpu
 [    0.000000] setup_percpu: NR_CPUS:8 nr_cpumask_bits:8 nr_cpu_ids:8 nr_node_ids:1
 ```
 
-In the next step we check the `percpu` first chunk allocator. All percpu areas are allocated in chunks. The first chunk is used for the static percpu variables. The Linux kernel has `percpu_alloc` command line parameters which provides the type of the first chunk allocator. We can read about it in the kernel documentation:
+다음 단계에서 우리는 `percpu` 첫번째 청크 할당자(chunk allocator)를 검사합니다. 모든 percpu 영역은 청크 안에 할당됩니다. 첫번째 청크는 static한 percpu 변수를 위해 사용됩니다. 리눅스 커널은 첫번째 청크 할당자의 타입을 제공하는 `percpu_alloc` 명령줄 파라미터를 가집니다. 우리는 커널 문서에서 이것에 대해 읽을 수 있습니다:
 
 ```
 percpu_alloc=	Select which percpu first chunk allocator to use.
@@ -80,17 +80,19 @@ percpu_alloc=	Select which percpu first chunk allocator to use.
 		and performance comparison.
 ```
 
-The [mm/percpu.c](https://github.com/torvalds/linux/blob/16f73eb02d7e1765ccab3d2018e0bd98eb93d973/mm/percpu.c) contains the handler of this command line option:
+[mm/percpu.c](https://github.com/torvalds/linux/blob/16f73eb02d7e1765ccab3d2018e0bd98eb93d973/mm/percpu.c)소스는 이 명령줄 옵션의 핸들러를 포함합니다:
 
 ```C
 early_param("percpu_alloc", percpu_alloc_setup);
 ```
 
-Where the `percpu_alloc_setup` function sets the `pcpu_chosen_fc` variable depends on the `percpu_alloc` parameter value. By default the first chunk allocator is `auto`:
+`pcpu_chosen_fc` 변수를 설정하는 `percpu_alloc_setup` 함수는 `percpu_alloc` 파라미터 값에 의존합니다. 첫번째 청크 할당자는 기본적으로 `auto` 입니다.
 
 ```C
 enum pcpu_fc pcpu_chosen_fc __initdata = PCPU_FC_AUTO;
 ```
+
+만약 `percpu_alloc` 파라미터가 커널 명령줄에 주어지지 않는다면, `embed` 할당자가 [memblock](https://0xax.gitbooks.io/linux-insides/content/MM/linux-mm-1.html)와 함께 bootmem에 첫번째 percpu 청크를 끼워넣는 데에 사용될 것입니다.
 
 If the `percpu_alloc` parameter is not given to the kernel command line, the `embed` allocator will be used which embeds the first percpu chunk into bootmem with the [memblock](https://0xax.gitbooks.io/linux-insides/content/MM/linux-mm-1.html). The last allocator is the first chunk `page` allocator which maps the first chunk with `PAGE_SIZE` pages.
 
