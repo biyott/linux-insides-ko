@@ -154,7 +154,7 @@ size_t atom_size;
 }))
 ```
 
-The Linux kernel is preemptible and accessing a per-cpu variable requires us to know which processor the kernel is running on. So, current code must not be preempted and moved to the another CPU while accessing a per-cpu variable. That's why, first of all we can see a call of the `preempt_disable` function then a call of the `this_cpu_ptr` macro, which looks like:
+리눅스 커널은 선점가능하며 cpu별 변수에 접근하려면 커널이 실행중인 프로세서를 알 필요가 있습니다. 그래서, 현재의 코드는 cpu별 변수를 접근하는 동안에 선점되어 다른 CPU로 옮겨지면 안됩니다. 그래서, 우선 `preempt_disable`를 호출한 다음 `this_cpu_ptr` 매크로를 호출하는 것을 볼 수 있습니다:
 
 ```C
 #define this_cpu_ptr(ptr) raw_cpu_ptr(ptr)
